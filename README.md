@@ -100,10 +100,3 @@ python scripts/evaluate_trackeval_metrics.py --help
 - `third_party/README.md`
 - `tools/README.md`
 
-### GitHub 上传建议
-
-- **不要直接上传 `data/` 和 `outputs/`**
-- **`weights/` 下大文件建议使用 Git LFS 或 GitHub Release**
-- 仓库本身建议只保留：源码、脚本、配置、说明文档、必要的小型辅助文件
-
-如果需要在其他机器上运行，也可以设置环境变量 `FUSSBALL_ROOT` 指向仓库根目录，但当前脚本已经默认按现有目录结构查找。 
