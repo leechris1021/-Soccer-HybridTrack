@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE / local state
+.vscode/
+.idea/
+.codebuddy/
+
+# Runtime caches and logs
+outputs/**
+!outputs/README.md
+raw_pred_cache.json
+smoke_log.txt
+*.log
+
+# Dataset (do not upload)
+data/**
+!data/README.md
+
+
+# Model weights (use Git LFS or Release instead)
+weights/*.pt
+weights/*.pth
+weights/*.pdparams
+weights/*.ckpt
+weights/*.onnx
+weights/*.engine
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,10 @@
+{
+  "seq_len": 30,
+  "feat_dim": 9,
+  "max_gap": 60,
+  "dist_thresh": 200,
+  "score_thresh": 0.8,
+  "best_acc": 0.9217747289223279,
+  "version": "v3",
+  "fusion_fix": true
+}

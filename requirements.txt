@@ -1,0 +1,13 @@
+numpy
+scipy
+opencv-python
+tqdm
+torch
+torchvision
+ultralytics
+trackeval
+torchreid
+gdown
+yacs
+timm
+Pillow

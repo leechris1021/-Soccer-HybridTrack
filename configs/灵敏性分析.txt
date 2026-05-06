@@ -1,0 +1,8 @@
+参数	值	HOTA	AssA	DetA	MOTA
+aflink_max_gap	30				
+aflink_max_gap	60				
+aflink_max_gap	90				
+aflink_sim	0.60				
+aflink_sim	0.70				
+aflink_sim	0.75				
+
