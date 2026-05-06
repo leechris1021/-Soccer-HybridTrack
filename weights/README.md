@@ -1,6 +1,7 @@
 ## weights
 
-这个目录用于存放实验所需模型权重。权重文件通常较大，建议通过 **Git LFS**、**网盘链接** 或 **GitHub Release** 提供，不建议直接普通提交。
+这个目录用于存放实验所需模型权重。权重文件通常较大，请在网盘中下载模型权重
+ https://pan.baidu.com/s/1vXdU3CZjrWSj8GkaB2QNTw?pwd=6c7t 提取码: 6c7t
 
 ### 主要权重
 
