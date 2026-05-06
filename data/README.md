@@ -1,6 +1,6 @@
 ## data
 
-这个目录用于存放 **SoccerNet / SNMOT 跟踪数据集**。由于数据体积较大，**不要直接上传到 GitHub**。
+这个目录用于存放 **SoccerNet / SNMOT 跟踪数据集**。本仓库不提供实际数据，请前往SoccerNet官网获取数据：https://www.soccer-net.org/。
 
 ### 推荐目录结构
 
@@ -29,4 +29,4 @@ data/
 
 ### GitHub 上传建议
 
-在公开仓库中只保留这个 `README.md`，不要提交实际图像帧和 GT。 
+在公开仓库中只保留这个 `README.md`。 
