@@ -1,6 +1,6 @@
 ## data
 
-这个目录用于存放 **SoccerNet / SNMOT 跟踪数据集**。本仓库不提供实际数据，请前往SoccerNet官网获取数据：https://www.soccer-net.org/。
+这个目录用于存放 **SoccerNet / SNMOT 跟踪数据集**。本仓库不提供实际数据，请前往SoccerNet官网获取数据：https://www.soccer-net.org/
 
 ### 推荐目录结构
 
