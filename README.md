@@ -1,6 +1,6 @@
 ## Fussball Tracking Experiments
 
-这是一个围绕 **YOLO + AdaptiveDeepSORT + ECC + AFLink / Hybrid AFLink** 的足球多目标跟踪实验仓库。当前仓库已经按“源码 / 脚本 / 配置 / 数据 / 权重 / 输出 / 报告 / 第三方依赖”重新整理，目标是方便上传到 GitHub，并让其他人可以按目录说明直接复现实验。
+这是一个围绕 **YOLO + AdaptiveDeepSORT + ECC + AFLink / Hybrid AFLink** 的足球多目标跟踪实验仓库。当前仓库已经按“源码 / 脚本 / 配置 / 数据 / 权重 / 输出 / 报告 / 第三方依赖”整理，可按目录说明复现论文实验。
 
 ### 仓库结构
 
