@@ -38,6 +38,65 @@ def iou_batch(atlbr, btlbr):
     return iou
 
 
+def eiou_batch(atlbr, btlbr):
+    """
+    计算两组边界框之间的 EIoU 矩阵。
+    EIoU = IoU - rho^2/c^2 - (w差异^2 + h差异^2) / c_wh^2
+    其中:
+      rho: 中心点欧氏距离
+      c:   最小外接矩形对角线长度
+      c_wh: 最小外接矩形的 w^2+h^2
+
+    atlbr: (M, 4) [x1,y1,x2,y2]
+    btlbr: (N, 4) [x1,y1,x2,y2]
+    返回: (M, N)，值域近似 [-1, 1]，越大越好
+    """
+    atlbr = np.expand_dims(atlbr, 1)   # (M, 1, 4)
+    btlbr = np.expand_dims(btlbr, 0)   # (1, N, 4)
+
+    # IoU 部分
+    xx1 = np.maximum(atlbr[:, :, 0], btlbr[:, :, 0])
+    yy1 = np.maximum(atlbr[:, :, 1], btlbr[:, :, 1])
+    xx2 = np.minimum(atlbr[:, :, 2], btlbr[:, :, 2])
+    yy2 = np.minimum(atlbr[:, :, 3], btlbr[:, :, 3])
+
+    inter_w = np.maximum(0, xx2 - xx1)
+    inter_h = np.maximum(0, yy2 - yy1)
+    inter = inter_w * inter_h
+
+    wa = atlbr[:, :, 2] - atlbr[:, :, 0]
+    ha = atlbr[:, :, 3] - atlbr[:, :, 1]
+    wb = btlbr[:, :, 2] - btlbr[:, :, 0]
+    hb = btlbr[:, :, 3] - btlbr[:, :, 1]
+
+    area_a = wa * ha
+    area_b = wb * hb
+    union = area_a + area_b - inter + 1e-9
+    iou = inter / union
+
+    # 中心点距离惩罚
+    cxa = (atlbr[:, :, 0] + atlbr[:, :, 2]) / 2.0
+    cya = (atlbr[:, :, 1] + atlbr[:, :, 3]) / 2.0
+    cxb = (btlbr[:, :, 0] + btlbr[:, :, 2]) / 2.0
+    cyb = (btlbr[:, :, 1] + btlbr[:, :, 3]) / 2.0
+    rho2 = (cxa - cxb) ** 2 + (cya - cyb) ** 2
+
+    # 最小外接矩形
+    enc_x1 = np.minimum(atlbr[:, :, 0], btlbr[:, :, 0])
+    enc_y1 = np.minimum(atlbr[:, :, 1], btlbr[:, :, 1])
+    enc_x2 = np.maximum(atlbr[:, :, 2], btlbr[:, :, 2])
+    enc_y2 = np.maximum(atlbr[:, :, 3], btlbr[:, :, 3])
+    enc_w = enc_x2 - enc_x1
+    enc_h = enc_y2 - enc_y1
+    c2 = enc_w ** 2 + enc_h ** 2 + 1e-9   # 对角线²
+
+    # 宽高差异惩罚
+    wh_term = ((wa - wb) ** 2 + (ha - hb) ** 2) / c2
+
+    eiou = iou - rho2 / c2 - wh_term
+    return eiou
+
+
 
 
 # ------------------------------------------------------------------ #
@@ -101,9 +160,11 @@ def adaptive_cost_matrix(tracks, detections, kf,
                          app_threshold=0.7,
                          mot_threshold=9.4877,   # chi2(4, 0.95)
                          iou_threshold=0.3,
-                         spatial_max_dist=200.0): # 方案C：空间门控距离阈值（像素）
+                         spatial_max_dist=200.0, # 方案C：空间门控距离阈值（像素）
+                         use_eiou=False):         # True → 用 EIoU 替换 IoU
     """
     构建自适应关联代价矩阵。
+    use_eiou: True 时时空项用 EIoU，False 时用普通 IoU（默认）。
     返回: cost_matrix (M, N), M=tracks, N=detections
     """
     if len(tracks) == 0 or len(detections) == 0:
@@ -141,10 +202,15 @@ def adaptive_cost_matrix(tracks, detections, kf,
         maha = kf.gating_distance(track.mean, track.covariance, det_xyah)  # (N,)
         c_mot = np.clip(maha / mot_threshold, 0, 1)
 
-        # --- 3. 时空代价 (1 - IoU) ---
+        # --- 3. 时空代价 (1 - IoU 或 1 - EIoU) ---
         trk_tlbr = track.to_tlbr()[None]            # (1, 4)
-        iou = iou_batch(trk_tlbr, det_tlbr)[0]      # (N,)
-        c_st = 1.0 - iou
+        if use_eiou:
+            sim = eiou_batch(trk_tlbr, det_tlbr)[0]     # (N,)，EIoU ∈ [-1,1]
+            # 映射到 [0,1]：0.5*(1 - EIoU)，EIoU=1→0，EIoU=-1→1
+            c_st = np.clip(0.5 * (1.0 - sim), 0.0, 1.0)
+        else:
+            iou = iou_batch(trk_tlbr, det_tlbr)[0]      # (N,)
+            c_st = 1.0 - iou
 
         # --- 自适应融合 ---
         cost = w_app * c_app + w_mot * c_mot + w_st * c_st

@@ -1,40 +1,33 @@
-# Python
+# ---- Python 构建垃圾 ----
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
-*.so
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
 
-# Virtual environments
-.venv/
-venv/
-env/
-
-# IDE / local state
-.vscode/
-.idea/
-.codebuddy/
-
-# Runtime caches and logs
-outputs/**
-!outputs/README.md
-raw_pred_cache.json
-smoke_log.txt
+# ---- 运行期缓存 / 临时文件 ----
 *.log
+*.err
+*.out
+*.tmp
+*.bak
+raw_pred_cache.json
 
-# Dataset (do not upload)
+# ---- 数据集（SoccerNet 协议不允许再分发，需自行下载）----
+tracking/
+tracking-2023/
 data/**
 !data/README.md
 
+# ---- 运行输出（可写目录，不入库）----
+outputs/**
+!outputs/README.md
+/appendix/**/out/
 
-# Model weights (use Git LFS or Release instead)
-weights/*.pt
-weights/*.pth
-weights/*.pdparams
-weights/*.ckpt
-weights/*.onnx
-weights/*.engine
+# ---- 大权重：超 GitHub 100 MiB 单文件硬限制，走 Release 附件 ----
+weights/best.pt
+weights/osnet_x075_soccernet_best.pth
 
-# OS files
+# ---- OS ----
 .DS_Store
 Thumbs.db

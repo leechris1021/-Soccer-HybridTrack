@@ -13,8 +13,6 @@ def _looks_like_project_root(candidate: Path) -> bool:
 def resolve_project_root() -> Path:
     env_candidates = [
         os.environ.get('FUSSBALL_ROOT'),
-        os.environ.get('AUTODL_FUSSBALL_ROOT'),
-        os.environ.get('AUTODL_PROJECT_ROOT'),
     ]
     for raw in env_candidates:
         if not raw:
@@ -28,10 +26,6 @@ def resolve_project_root() -> Path:
         if _looks_like_project_root(candidate):
             return candidate
 
-    for candidate in (Path('/root/autodl-tmp/Fussball'), Path('/autodl-tmp/Fussball')):
-        if _looks_like_project_root(candidate):
-            return candidate.resolve()
-
     return current.parents[1]
 
 
@@ -44,17 +38,17 @@ OUTPUTS_ROOT = PROJECT_ROOT / 'outputs'
 TRACKER_RESULTS_ROOT = OUTPUTS_ROOT / 'tracker_results'
 TOOLS_ROOT = PROJECT_ROOT / 'tools'
 THIRD_PARTY_ROOT = PROJECT_ROOT / 'third_party'
+APPENDIX_ROOT = PROJECT_ROOT / 'appendix'
+SCRIPTS_ROOT = PROJECT_ROOT / 'scripts'
 
-DEFAULT_TRACKING_ROOT = DATA_ROOT / 'tracking'
+DEFAULT_TRACKING_ROOT = PROJECT_ROOT / 'tracking'
 DEFAULT_TEST_DATA_ROOT = DEFAULT_TRACKING_ROOT / 'test' / 'test'
 DEFAULT_TRAIN_DATA_ROOT = DEFAULT_TRACKING_ROOT / 'train' / 'train'
 DEFAULT_CHALLENGE_DATA_ROOT = DEFAULT_TRACKING_ROOT / 'challenge' / 'challenge'
-DEFAULT_TRACKING_2023_ROOT = DATA_ROOT / 'tracking-2023'
 
 DEFAULT_YOLO_WEIGHTS = WEIGHTS_ROOT / 'best.pt'
 DEFAULT_OSNET_WEIGHTS = WEIGHTS_ROOT / 'osnet_x075_soccernet_best.pth'
 DEFAULT_AFLINK_WEIGHTS = WEIGHTS_ROOT / 'aflink_model_v3.pth'
-DEFAULT_RAW_PRED_CACHE = OUTPUTS_ROOT / 'raw_pred_cache.json'
 
 DEFAULT_SEQMAP_CANDIDATES = [
     TOOLS_ROOT / 'SNMOT-test.txt',
@@ -86,6 +80,4 @@ def load_default_test_sequence_names(gt_root: Path | None = None) -> list[str]:
         if len(seqs) == EXPECTED_TEST_SEQUENCE_COUNT:
             return seqs
 
-    raise FileNotFoundError(
-        '未找到有效的 49 序列测试清单，请检查 `tools/SNMOT-test.txt`。'
-    )
+    raise FileNotFoundError('未找到有效的 49 序列测试清单，请检查 `tools/SNMOT-test.txt`。')

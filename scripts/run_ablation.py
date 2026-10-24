@@ -1,12 +1,11 @@
-from __future__ import annotations
-
 """
-消融实验脚本：支持 ECC、AFLink、空间距离限制的开关
+消融实验脚本：支持 ECC、AFLink、空间距离限制、EIoU 的开关
 用法:
-    python scripts/run_ablation.py --use_ecc                    # 启用 ECC
-    python scripts/run_ablation.py --no-use_ecc                 # 禁用 ECC
-    python scripts/run_ablation.py --use_spatial_limit          # 启用空间距离限制
-    python scripts/run_ablation.py --model_name osnet           # 选择外观模型
+    python run_ablation.py --use_ecc                    # 启用 ECC
+    python run_ablation.py --no-use_ecc                 # 禁用 ECC
+    python run_ablation.py --use_spatial_limit          # 启用空间距离限制
+    python run_ablation.py --use_eiou                   # 启用 EIoU（替换 IoU）
+    python run_ablation.py --model_name osnet           # 选择外观模型
 """
 import argparse
 import shutil
@@ -18,18 +17,17 @@ import cv2
 import numpy as np
 from tqdm import tqdm
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = SCRIPT_DIR.parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+PROJECT_ROOT = Path(__file__).resolve().parent          # = <repo>/scripts
+REPO_ROOT = PROJECT_ROOT.parent                          # = <repo>
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
-from fussball.project import DEFAULT_TEST_DATA_ROOT, DEFAULT_YOLO_WEIGHTS, TRACKER_RESULTS_ROOT, load_default_test_sequence_names
-from fussball.track import TrackState
 from fussball.adaptive_deepsort import AdaptiveDeepSORT
 from fussball.aflink import AFLink
 from fussball.detection import Detection
 from fussball.ecc import ECCMotionCompensation
-from fussball.association import adaptive_cost_matrix, hungarian_match
+from fussball.project import DEFAULT_TEST_DATA_ROOT
+from fussball.track import TrackState
 
 
 # ============================================================================
@@ -43,10 +41,8 @@ class TrackerAblation(AdaptiveDeepSORT):
                  use_aflink=True,
                  use_spatial_limit=False,
                  spatial_max_dist=200,
-                 aflink_max_gap=60,
-                 aflink_sim=0.70,
-                 aflink_dist=200,
                  ecc_scale=0.75,
+                 use_eiou=False,
                  **kwargs):
         """
         初始化消融实验追踪器
@@ -57,9 +53,10 @@ class TrackerAblation(AdaptiveDeepSORT):
             use_spatial_limit: 是否在关联代价矩阵中加入空间距离限制
             spatial_max_dist: 空间距离阈值（像素）
             ecc_scale: ECC 计算时的图像缩放比例
+            use_eiou: 是否用 EIoU 替换 IoU（默认关闭）
             **kwargs: 传递给父类 AdaptiveDeepSORT 的参数
         """
-        super().__init__(**kwargs)
+        super().__init__(use_eiou=use_eiou, **kwargs)
         
         # ECC 配置
         self.use_ecc = use_ecc
@@ -69,10 +66,7 @@ class TrackerAblation(AdaptiveDeepSORT):
         
         # AFLink 配置
         self.use_aflink = use_aflink
-        self.aflink_max_gap = aflink_max_gap
-        self.aflink_sim = aflink_sim
-        self.aflink_dist = aflink_dist
-        self.aflink = AFLink(max_gap=aflink_max_gap, sim_thresh=aflink_sim, dist_thresh=aflink_dist) if use_aflink else None
+        self.aflink = AFLink() if use_aflink else None
         
         # 空间距离限制配置
         self.use_spatial_limit = use_spatial_limit
@@ -80,7 +74,6 @@ class TrackerAblation(AdaptiveDeepSORT):
         
         # 用于存储轨迹历史（供 AFLink 使用）
         self.track_history = defaultdict(lambda: {'frames': [], 'boxes': []})
-        self._id_mapping = {}
 
     def reset(self):
         """重置跟踪器状态"""
@@ -90,7 +83,6 @@ class TrackerAblation(AdaptiveDeepSORT):
         self.prev_frame = None
         self._ecc_H = np.eye(3)
         self.track_history.clear()
-        self._id_mapping.clear()
 
     # ------------------------------------------------------------------------ #
     #  核心方法重写
@@ -106,7 +98,7 @@ class TrackerAblation(AdaptiveDeepSORT):
             results: 跟踪结果列表
         """
         self.frame_id += 1
-        curr_frame = frame_bgr
+        curr_frame = frame_bgr.copy()
         
         # --- Step 1: ECC 运动补偿（计算变换矩阵）---
         if self.use_ecc and self.ecc is not None and self.prev_frame is not None:
@@ -185,20 +177,6 @@ class TrackerAblation(AdaptiveDeepSORT):
                     detections.append(Detection(valid_boxes[k], float(confs[i]), int(classes[i]), feat))
         return detections
 
-
-    def _associate(self, tracks, detections):
-        """使用可配置空间门控的自适应代价矩阵关联"""
-        if not tracks or not detections:
-            return [], list(range(len(tracks))), list(range(len(detections)))
-
-        spatial_max_dist = self.spatial_max_dist if self.use_spatial_limit else 1e9
-        cost = adaptive_cost_matrix(
-            tracks,
-            detections,
-            self.kf,
-            spatial_max_dist=spatial_max_dist,
-        )
-        return hungarian_match(cost, threshold=self.match_threshold)
 
     def _associate_iou(self, tracks, detections):
         """纯 IOU 关联（用于新生轨迹）"""
@@ -280,39 +258,27 @@ class TrackerAblation(AdaptiveDeepSORT):
             self._apply_aflink()
         
         # 构建结果（使用合并后的 ID）
-        # 注意：AFLink 在线映射后，可能出现两个活跃轨迹映射到同一个最终 ID。
-        # 为避免 MOT/TrackEval 出现“同一帧同一 ID 多次出现”的非法结果，
-        # 这里按 final_id 去重，优先保留“原生 final_id 轨迹”，其次保留 hits 更多、框面积更大的目标。
-        best_by_final_id = {}
+        results = []
         for track in self.tracks:
-            if not track.is_confirmed:
-                continue
-
-            final_id = self._get_final_track_id(track.track_id)
-            cx, cy, w, h = track.mean[:4]
-            x1, y1 = cx - w / 2, cy - h / 2
-            x2, y2 = cx + w / 2, cy + h / 2
-            area = max(float(w), 0.0) * max(float(h), 0.0)
-            score = (
-                1 if track.track_id == final_id else 0,
-                int(track.hits),
-                area,
-            )
-            result = {
-                'id': final_id,
-                'bbox': [x1, y1, x2, y2],
-                'class': str(track.det_class),
-                'state': 'confirmed',
-                'velocity': track.velocity[:2].tolist(),
-                'trajectory': [[p[0], p[1]] for p in track.trajectory],
-                'occ_frames': track.occ_frames,
-            }
-
-            existing = best_by_final_id.get(final_id)
-            if existing is None or score > existing['score']:
-                best_by_final_id[final_id] = {'score': score, 'result': result}
-
-        return [best_by_final_id[track_id]['result'] for track_id in sorted(best_by_final_id)]
+            if track.is_confirmed:
+                # 使用映射后的 ID
+                final_id = self._get_final_track_id(track.track_id)
+                
+                cx, cy, w, h = track.mean[:4]
+                x1, y1 = cx - w/2, cy - h/2
+                x2, y2 = cx + w/2, cy + h/2
+                
+                results.append({
+                    'id': final_id,
+                    'bbox': [x1, y1, x2, y2],
+                    'class': str(track.det_class),
+                    'state': 'confirmed',
+                    'velocity': track.velocity[:2].tolist(),
+                    'trajectory': [[p[0], p[1]] for p in track.trajectory],
+                    'occ_frames': track.occ_frames,
+                })
+        
+        return results
     
     def _apply_aflink(self):
         """应用 AFLink 合并断裂轨迹"""
@@ -400,21 +366,11 @@ def process_sequence(tracker_class, img_dir, output_file, tracker_kwargs):
 
 def resolve_seq_root(data_root: Path) -> Path:
     """解析数据根目录结构"""
-    # 允许直接传单个序列目录，例如 /root/autodl-tmp/Fussball/tracking/test/test/SNMOT-116
-    if (data_root / 'img1').is_dir():
-        return data_root
-
     # SNMOT 数据集结构: data_root/images/test/SNMOT-xxx/img1/
     legacy_root = data_root / 'images' / 'test'
     if legacy_root.is_dir():
         return legacy_root
     return data_root
-
-
-def collect_sequence_dirs(seq_root: Path) -> list[Path]:
-    if (seq_root / 'img1').is_dir():
-        return [seq_root]
-    return sorted([d for d in seq_root.iterdir() if d.is_dir() and (d / 'img1').exists()])
 
 
 # ============================================================================
@@ -436,6 +392,8 @@ def main():
                         help='是否启用空间距离限制（默认关闭）')
     parser.add_argument('--spatial_max_dist', type=float, default=200,
                         help='空间距离阈值（像素），默认 200')
+    parser.add_argument('--use_eiou', action='store_true', default=False,
+                        help='是否用 EIoU 替换 IoU 作为时空关联项（默认关闭）')
     
     # 模型配置
     parser.add_argument('--model_name', type=str, default='osnet',
@@ -447,11 +405,11 @@ def main():
     # 数据路径
     parser.add_argument('--data_root', type=str, 
                         default=str(DEFAULT_TEST_DATA_ROOT),
-                        help='测试集根目录')
+                        help='测试集根目录（默认 <repo>/tracking/test/test）')
     parser.add_argument('--model', type=str, default=None,
                         help='YOLO 权重路径')
     parser.add_argument('--seqs', nargs='+', default=None,
-                        help='指定要处理的序列名；若不指定则处理当前目录下全部可用序列')
+                        help='指定要处理的序列名（默认取前10个）')
     parser.add_argument('--output_dir', type=str, default=None,
                         help='结果输出目录')
     
@@ -460,20 +418,6 @@ def main():
                         help='检测置信度阈值')
     parser.add_argument('--imgsz', type=int, default=1280,
                         help='推理分辨率')
-    parser.add_argument('--match_threshold', type=float, default=0.70,
-                        help='匈牙利匹配阈值，默认 0.70')
-    parser.add_argument('--max_age', type=int, default=25,
-                        help='轨迹最大丢失帧数，默认 25')
-    parser.add_argument('--n_init', type=int, default=3,
-                        help='轨迹确认所需命中次数，默认 3')
-    parser.add_argument('--max_feature_queue', type=int, default=5,
-                        help='特征队列长度，默认 5')
-    parser.add_argument('--aflink_max_gap', type=int, default=60,
-                        help='AFLink 最大时间间隔，默认 60')
-    parser.add_argument('--aflink_sim', type=float, default=0.70,
-                        help='AFLink 相似度阈值，默认 0.70')
-    parser.add_argument('--aflink_dist', type=float, default=200,
-                        help='AFLink 空间距离阈值，默认 200')
     
     args = parser.parse_args()
     
@@ -483,7 +427,7 @@ def main():
     
     if args.model is None:
         # 默认 YOLO 权重路径
-        args.model = str(DEFAULT_YOLO_WEIGHTS)
+        args.model = str(REPO_ROOT / 'weights' / 'best.pt')
     model_path = Path(args.model)
     
     if args.output_dir is None:
@@ -493,9 +437,10 @@ def main():
         components.append('aflink' if args.use_aflink else 'noaflink')
         if args.use_spatial_limit:
             components.append(f'spatial_{args.spatial_max_dist}')
+        components.append('eiou' if args.use_eiou else 'iou')
         components.append(args.model_name)
         output_dir_name = '_'.join(components)
-        args.output_dir = TRACKER_RESULTS_ROOT / output_dir_name
+        args.output_dir = REPO_ROOT / 'outputs' / 'tracker_results' / output_dir_name
     else:
         args.output_dir = Path(args.output_dir)
     
@@ -506,20 +451,16 @@ def main():
         raise FileNotFoundError(f'YOLO 权重不存在: {model_path}')
     
     # 获取序列列表
-    available_seqs = collect_sequence_dirs(seq_root)
-    seq_map = {seq.name: seq for seq in available_seqs}
-
+    available_seqs = sorted([d for d in seq_root.iterdir() if d.is_dir() and (d / 'img1').exists()])
+    
     if args.seqs:
+        seq_map = {seq.name: seq for seq in available_seqs}
         missing = [name for name in args.seqs if name not in seq_map]
         if missing:
             raise FileNotFoundError(f'以下序列不存在: {missing}')
         seqs = [seq_map[name] for name in args.seqs]
     else:
-        default_seq_names = load_default_test_sequence_names(seq_root)
-        missing = [name for name in default_seq_names if name not in seq_map]
-        if missing:
-            raise FileNotFoundError(f'默认 49 序列中以下目录不存在: {missing}')
-        seqs = [seq_map[name] for name in default_seq_names]
+        seqs = available_seqs[:10]  # 默认处理前10个序列
     
     # 打印配置信息
     print("=" * 60)
@@ -530,22 +471,15 @@ def main():
     print(f"  空间距离限制: {'✓ 启用' if args.use_spatial_limit else '✗ 禁用'}")
     if args.use_spatial_limit:
         print(f"    距离阈值: {args.spatial_max_dist}px")
+    print(f"  时空关联项: {'EIoU' if args.use_eiou else 'IoU'}")
     print(f"  外观模型: {args.model_name}")
-    print(f"  match_threshold: {args.match_threshold}")
-    print(f"  n_init: {args.n_init}")
-    print(f"  max_age: {args.max_age}")
-    print(f"  max_feature_queue: {args.max_feature_queue}")
-    print(f"  aflink_max_gap: {args.aflink_max_gap}")
-    print(f"  aflink_sim: {args.aflink_sim}")
-    print(f"  aflink_dist: {args.aflink_dist}")
     print(f"  YOLO 权重: {model_path}")
     print(f"  数据目录: {seq_root}")
     print(f"  输出目录: {args.output_dir}")
     print(f"  处理序列数: {len(seqs)}")
     print("=" * 60)
     
-    # 清理并创建输出目录
-    shutil.rmtree(args.output_dir, ignore_errors=True)
+    # 创建输出目录（保留已有结果，不清空，支持断点续跑）
     args.output_dir.mkdir(parents=True, exist_ok=True)
     
     # 追踪器参数
@@ -560,14 +494,11 @@ def main():
         'use_aflink': args.use_aflink,
         'use_spatial_limit': args.use_spatial_limit,
         'spatial_max_dist': args.spatial_max_dist,
+        'use_eiou': args.use_eiou,
         'ecc_scale': 0.75,
-        'match_threshold': args.match_threshold,
-        'n_init': args.n_init,
-        'max_age': args.max_age,
-        'max_feature_queue': args.max_feature_queue,
-        'aflink_max_gap': args.aflink_max_gap,
-        'aflink_sim': args.aflink_sim,
-        'aflink_dist': args.aflink_dist,
+        'match_threshold': 0.7,
+        'n_init': 3,
+        'max_age': 25,
     }
     
     # 处理所有序列
@@ -578,6 +509,13 @@ def main():
         
         print(f"\n[{i}/{len(seqs)}] 处理序列: {seq.name}")
         
+        # 断点续跑：已存在结果则跳过
+        if output_file.exists() and output_file.stat().st_size > 0:
+            count = sum(1 for _ in open(output_file, encoding='utf-8'))
+            total_records += count
+            print(f"  [SKIP] 已存在，跳过（{count} 条记录）")
+            continue
+        
         count = process_sequence(
             TrackerAblation,
             img_dir,
@@ -586,7 +524,7 @@ def main():
         )
         
         total_records += count
-        print(f"  ✅ 生成 {count} 条记录")
+        print(f"  生成 {count} 条记录")
     
     print("\n" + "=" * 60)
     print(f"完成！总记录数: {total_records}")

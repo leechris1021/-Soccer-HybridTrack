@@ -4,7 +4,8 @@
 
 ### 当前文件
 
-- `SNMOT-test.txt`：49 个测试序列的官方清单
+- `SNMOT-test.txt`：49 个正式测试序列的官方清单（由 `fussball/project.py` 加载）
+- `SNMOT-challenge.txt`：challenge 划分序列清单（58 序列 + 表头 `name`），仅供备查
 
 ### 用途
 

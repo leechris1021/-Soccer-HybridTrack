@@ -6,11 +6,18 @@ AdaptiveDeepSORT 跟踪器主逻辑
 import numpy as np
 import cv2
 
-from .kalman_filter import ExtendedKalmanFilter
-from .track import Track, TrackState
-from .detection import Detection
-from .association import adaptive_cost_matrix, hungarian_match, iou_batch
-from .appearance import AppearanceExtractor
+try:  # 包内导入（推荐：from fussball.adaptive_deepsort import AdaptiveDeepSORT）
+    from .kalman_filter import ExtendedKalmanFilter
+    from .track import Track, TrackState
+    from .detection import Detection
+    from .association import adaptive_cost_matrix, hungarian_match, iou_batch
+    from .appearance import AppearanceExtractor
+except ImportError:  # 兼容把 fussball/ 直接加入 sys.path 的旧用法
+    from kalman_filter import ExtendedKalmanFilter
+    from track import Track, TrackState
+    from detection import Detection
+    from association import adaptive_cost_matrix, hungarian_match, iou_batch
+    from appearance import AppearanceExtractor
 
 
 class AdaptiveDeepSORT:
@@ -40,7 +47,8 @@ class AdaptiveDeepSORT:
                  device=None,
                  # ECC 和 AFLink 相关参数（由子类使用）
                  use_ecc=False,
-                 use_aflink=False):
+                 use_aflink=False,
+                 use_eiou=False):        # True → 时空项用 EIoU 替换 IoU
 
         # YOLOv8 检测器
         from ultralytics import YOLO
@@ -72,6 +80,7 @@ class AdaptiveDeepSORT:
         # ECC 和 AFLink（默认关闭，由子类启用）
         self.use_ecc = use_ecc
         self.use_aflink = use_aflink
+        self.use_eiou = use_eiou
 
         # 跟踪器列表
         self.tracks = []
@@ -214,7 +223,7 @@ class AdaptiveDeepSORT:
         if not tracks or not detections:
             return [], list(range(len(tracks))), list(range(len(detections)))
 
-        cost = adaptive_cost_matrix(tracks, detections, self.kf)
+        cost = adaptive_cost_matrix(tracks, detections, self.kf, use_eiou=self.use_eiou)
         return hungarian_match(cost, threshold=self.match_threshold)
 
     def _associate_iou(self, tracks, detections):

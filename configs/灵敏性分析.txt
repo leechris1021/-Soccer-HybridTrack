@@ -1,8 +1,34 @@
-参数	值	HOTA	AssA	DetA	MOTA
-aflink_max_gap	30				
-aflink_max_gap	60				
-aflink_max_gap	90				
-aflink_sim	0.60				
-aflink_sim	0.70				
-aflink_sim	0.75				
+Table 3-6 参数敏感性扫描网格
+============================
 
+论文 Table 3-6 的口径是 **MCVC 骨干（Config J @250/450）**，逐档 train/test 结果见
+appendix/config_j_mcvc/reports/_sens250/sens250.md。
+
+论文表    参数                 扫描取值                     配置数
+Table 3   conf                 0.25 / 0.30 / 0.35              3
+Table 4   imgsz                960 / 1280 / 1536               3
+Table 5   max_age              20 / 25 / 30 / 60 / 100         5
+Table 6   n_init               1 / 2 / 3                       3
+Table 6   match_thresh         0.60 / 0.70 / 0.80              3
+Table 6   max_dist             150 / 200 / 300                 3
+Table 6   max_feature_queue    5 / 10 / 20                     3
+                                                         合计 23
+
+扫描之外固定不变（论文最终配置 Config J / MCVC）
+--------------------------------------------
+  rule_variant            = baseline（两因子时间/距离评分 + 贪心，不加载神经网络）
+  名义窗口                max_gap = 250，dist_thresh = 450
+  gate_score_norm         = nominal，自适应门控退场（不参与评分/筛选）
+  kit_veto                = any（队色等价类否决）
+  队别标签表               _probe_color_team.py --stage pixels --dump-labels <PATH>
+  展开见 configs/optimal_config.json 的 paper_final 段
+
+单个配置的评测流程
+------------------
+  BoT-SORT(use_aflink=False) 逐序列生成 MOT txt
+  → HybridAFLink（Config J：baseline + kit_veto=any）
+  → TrackEval（与 aflink_hybrid_eval_v4.py 同口径）
+
+实测指标
+--------
+  appendix/config_j_mcvc/reports/_sens250/sens250.md

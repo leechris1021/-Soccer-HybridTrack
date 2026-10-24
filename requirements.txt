@@ -1,11 +1,15 @@
-numpy
-scipy
-opencv-python
-tqdm
-torch
+# Python >= 3.9（代码使用 from __future__ import annotations 与 `X | None` 注解）
+# ---- 复现已退役的自适应门控阶段锚点（Config I，后处理 + 评测），不需要 GPU ----
+numpy>=1.21
+scipy>=1.7
+torch>=1.9            # aflink_hybrid_eval 的神经网络分支会 import；CPU 版即可
+trackeval>=1.1.0      # pip install trackeval，或用 SoccerNet devkit 自带副本
+
+# ---- 全链路（重跑 BoT-SORT 检测阶段，需要 GPU + 图片）----
+opencv-python>=4.5
+tqdm>=4.60
+ultralytics>=8.0
 torchvision
-ultralytics
-trackeval
 torchreid
 gdown
 yacs

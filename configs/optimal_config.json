@@ -1,0 +1,43 @@
+{
+  "_description": "Soccer-HybridTrack-v2 配置展开：paper_final = 论文最终方案 Config J（MCVC：宽窗 250/450 + 队色等价类否决，自适应门控退役）。",
+  "paper_final": {
+    "_description": "论文最终配置 Config J（论文 Table 2 的 Config J；论文中写作 MCVC）。自适应门控退场，改为「宽标称窗口 + 队色等价类否决」。",
+    "_source": "appendix/config_j_mcvc/code/aflink_hybrid_eval_v4.py 的 --mcv 一键开关（等价于 --gate_score_norm nominal + --kit_veto any）",
+    "_paper_numbers": "test 64.306 / train 64.872（论文写作 64.31 / 64.87）",
+    "rule_variant": "baseline",
+    "max_gap": 250,
+    "dist_thresh": 450,
+    "gate_score_norm": "nominal",
+    "kit_veto": "any",
+    "kit_outlier_label": "cX",
+    "mcv_cone": false,
+    "mcv_recip": "off",
+    "temporal_weight": 0.4,
+    "distance_weight": 0.4,
+    "shape_weight": 0.2,
+    "kit_labels": {
+      "_note": "队别标签表 JSON（{seq: {track_id: label}}；label 形如 'A'/'B' 或离群 'cX'）。由 appendix/config_j_mcvc/code/_probe_color_team.py --stage pixels --dump-labels <PATH> 生成；不提供时队色否决不生效。"
+    },
+    "anchors": {
+      "_note": "论文最终方案锚点，见 appendix/config_j_mcvc/reports/_sens250/sens250.md（T2 队色否决单独（入选）一行）。",
+      "test": {
+        "n_sequences": 49,
+        "HOTA": 64.306,
+        "DetA": 70.134,
+        "AssA": 59.082,
+        "MOTA": 85.181,
+        "IDF1": 78.191,
+        "IDs": 1770.0
+      },
+      "train": {
+        "n_sequences": 57,
+        "HOTA": 64.872,
+        "DetA": 71.517,
+        "AssA": 58.927,
+        "MOTA": 88.043,
+        "IDF1": 79.603,
+        "IDs": 2268.0
+      }
+    }
+  }
+}

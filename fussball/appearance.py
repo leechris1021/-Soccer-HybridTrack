@@ -12,7 +12,20 @@ import torch.nn as nn
 import torchvision.transforms as T
 from PIL import Image
 
-from .project import DEFAULT_OSNET_WEIGHTS
+# 尝试导入 torchreid，如果失败则使用 timm 作为备选
+try:
+    import torchreid
+    TORCHREID_AVAILABLE = True
+except ImportError:
+    TORCHREID_AVAILABLE = False
+    print("[Re-ID] torchreid 未安装，将使用 timm 作为备选")
+    import timm
+
+
+try:  # 权重路径统一由 fussball/project.py 维护，避免指向不存在的 reid_weights/
+    from .project import DEFAULT_OSNET_WEIGHTS
+except ImportError:  # 兼容把 fussball/ 直接加入 sys.path 的旧用法
+    from project import DEFAULT_OSNET_WEIGHTS
 
 DEFAULT_RESNET_WEIGHTS = None  # 使用 ImageNet 预训练
 
@@ -74,19 +87,16 @@ class AppearanceExtractor:
         """构建 OSNet-x0.75 模型"""
         resolved_weights = Path(weights_path).expanduser() if weights_path else DEFAULT_OSNET_WEIGHTS
 
-        try:
-            import torchreid
-        except Exception as exc:
-            raise ImportError(
-                "运行 OSNet 外观模型需要先安装并正确配置 torchreid 依赖。"
-                "请在当前环境执行: pip install torchreid gdown yacs"
-            ) from exc
-
-        self.model = torchreid.models.build_model(
-            name='osnet_x0_75',
-            num_classes=1,
-            pretrained=False,
-        )
+        if TORCHREID_AVAILABLE:
+            self.model = torchreid.models.build_model(
+                name='osnet_x0_75',
+                num_classes=1,
+                pretrained=False,
+            )
+        else:
+            # 使用 timm 作为备选
+            self.model = timm.create_model('osnet_x0_75', pretrained=False, num_classes=0)
+            self.model.classifier = nn.Identity()
 
         # 加载权重
         if resolved_weights.exists():
@@ -123,11 +133,15 @@ class AppearanceExtractor:
                 print(f"[Re-ID] 默认权重不存在: {resolved_weights}")
             print("[Re-ID] 回退到 ImageNet 预训练")
             
-            self.model = torchreid.models.build_model(
-                name='osnet_x0_75',
-                num_classes=1,
-                pretrained=True,
-            )
+            if TORCHREID_AVAILABLE:
+                self.model = torchreid.models.build_model(
+                    name='osnet_x0_75',
+                    num_classes=1,
+                    pretrained=True,
+                )
+            else:
+                self.model = timm.create_model('osnet_x0_75', pretrained=True, num_classes=0)
+                self.model.classifier = nn.Identity()
 
         # 移除分类头（如果还存在）
         if hasattr(self.model, 'classifier'):
